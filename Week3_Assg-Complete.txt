@@ -1,0 +1,301 @@
+github-pb/Week3_Assg-Complete.ipynb
+
+
+import requests
+import lxml.html as lh
+import pandas as pd
+
+
+url='https://en.wikipedia.org/wiki/List_of_postal_codes_of_Canada:_M'
+#Create a handle, page, to handle the contents of the website
+page = requests.get(url)
+#Store the contents of the website under doc
+doc = lh.fromstring(page.content)
+#Parse data that are stored between <tr>..</tr> of HTML
+tr_elements = doc.xpath('//tr')
+tr_elements = doc.xpath('//tr')
+#Create empty list
+col=[]
+i=0
+#For each row, store each first element (header) and an empty list
+for t in tr_elements[0]:
+    i+=1
+    name=t.text_content()
+    print (i,name)
+    col.append((name,[]))
+
+#Since out first row is the header, data is stored on the second row onwards
+for j in range(1,len(tr_elements)):
+    #T is our j'th row
+    T=tr_elements[j]
+    
+    #If row is not of size 10, the //tr data is not from our table 
+    if len(T)!=3:
+        break
+    
+    #i is the index of our column
+    i=0
+    
+    #Iterate through each element of the row
+    for t in T.iterchildren():
+        data=t.text_content() 
+        #Check if row is empty
+        if i>0:
+        #Convert any numerical value to integers
+            try:
+                data=int(data)
+            except:
+                pass
+        #Append the data to the empty list of the i'th column
+        col[i][1].append(data)
+        #Increment i for the next column
+        i+=1
+
+Dict={title:column for (title,column) in col}
+df=pd.DataFrame(Dict)
+df.head()
+df.count()
+
+# dropping useless rows with no boroughs
+df=df[df.Borough != 'Not assigned']
+df.count()
+df.rename(columns={'Neighbourhood\n': 'Neighbourhood'}, inplace=True)
+df.head(10)
+columnsNamesArr = df.columns.values
+
+#Fixing neighbourhood blank values
+
+import numpy as np
+df['Neighbourhood'] = np.where(df['Neighbourhood']== 'Not assigned\n', df['Borough'] , df['Neighbourhood'])
+#df.loc[ df.a < 3, 'b' ] = 'small'
+#print (df.head(10))
+
+#Grouping by PostCode
+#df.groupby(['Postcode'])['Neighbourhood'].agg([('Neighbourhood', ', '.join)]).reset_index()
+#df =df.groupby('Postcode')['Neighbourhood'].agg([('Neighbourhood', ', '.join)]).reset_index()
+#df =df.groupby('top_level_domain')['category'].agg([('category', ', '.join)]).reset_index()
+
+df=df.groupby(['Postcode','Borough'], as_index=False)['Neighbourhood'].agg(lambda x: list(x))
+#print (df)
+df.shape
+
+
+================================================================================================================================
+
+filepath='Geo.csv' 
+df2 = pd.read_csv(filepath) 
+# Preview the first 5 lines of the loaded data 
+df2.head()
+df2.rename(columns={'Postal Code':'Postcode'},inplace=True)
+
+dfull= pd.merge(df, df2, on='Postcode', how='left')
+dfull.rename(columns={'Postcode':'PostalCode'},inplace=True)
+dfull.head()
+
+==========================================================================================================
+
+from geopy.geocoders import Nominatim # convert an address into latitude and longitude values
+
+import requests # library to handle requests
+from pandas.io.json import json_normalize # tranform JSON file into a pandas dataframe
+
+# Matplotlib and associated plotting modules
+import matplotlib.cm as cm
+import matplotlib.colors as colors
+
+# import k-means from clustering stage
+from sklearn.cluster import KMeans
+
+#!conda install -c conda-forge folium=0.5.0 --yes # uncomment this line if you haven't completed the Foursquare API lab
+import folium # map rendering library
+
+
+address = 'Toronto, CN'
+
+geolocator = Nominatim(user_agent="ny_explorer")
+location = geolocator.geocode(address)
+latitude = location.latitude
+longitude = location.longitude
+print('The geograpical coordinate of Toronto are {}, {}.'.format(latitude, longitude))
+
+
+# create map of Toronto using latitude and longitude values
+map_toronto = folium.Map(location=[latitude, longitude], zoom_start=10)
+for lat, lng, borough, neighborhood in zip(dfull['Latitude'], dfull['Longitude'], dfull['Borough'], dfull['Neighbourhood']):
+    label = '{}, {}'.format(neighborhood, borough)
+    label = folium.Popup(label, parse_html=True)
+    folium.CircleMarker(
+        [lat, lng],
+        radius=5,
+        popup=label,
+        color='blue',
+        fill=True,
+        fill_color='#3186cc',
+        fill_opacity=0.7,
+        parse_html=False).add_to(map_toronto)  
+           
+map_toronto
+
+tor_data = dfull[dfull['Borough'].str.contains("Toronto") == True].reset_index(drop=True)
+tor_data.head(100)
+address = 'York, TN'
+
+geolocator = Nominatim(user_agent="ny_explorer")
+location = geolocator.geocode(address)
+latitude = location.latitude
+longitude = location.longitude
+print('The geograpical coordinate of CBDToronto are {}, {}.'.format(latitude, longitude))
+
+# create map of Manhattan using latitude and longitude values
+map_york = folium.Map(location=[latitude, longitude], zoom_start=11)
+
+# add markers to map
+for lat, lng, label in zip(tor_data['Latitude'], tor_data['Longitude'], tor_data['Neighbourhood']):
+    label = folium.Popup(label, parse_html=True)
+    folium.CircleMarker(
+        [lat, lng],
+        radius=5,
+        popup=label,
+        color='blue',
+        fill=True,
+        fill_color='#3186cc',
+        fill_opacity=0.7,
+        parse_html=False).add_to(map_york)  
+    
+map_york
+
+=====================================================================================================
+
+CLIENT_ID = 'EUHDIUEBLKQCDZQKKM52XQMBUI2RCSR0GPUDFWZWZRTYN21J' # your Foursquare ID
+CLIENT_SECRET = 'MPPBFPNUG0J2SYVXQDD1H3MBPOIMXDLWWMPA4XY23LHDAB15' # your Foursquare Secret
+VERSION = '20180605' # Foursquare API version
+print('Your credentails:')
+print('CLIENT_ID: ' + CLIENT_ID)
+print('CLIENT_SECRET:' + CLIENT_SECRET)
+
+tor_data.loc[0, 'Neighbourhood']
+neighborhood_latitude = tor_data.loc[0, 'Latitude'] # neighborhood latitude value
+neighborhood_longitude = tor_data.loc[0, 'Longitude'] # neighborhood longitude value
+
+neighborhood_name = tor_data.loc[0, 'Neighbourhood'] # neighborhood name
+
+print('Latitude and longitude values of {} are {}, {}.'.format(neighborhood_name, 
+                                                               neighborhood_latitude, 
+                                                               neighborhood_longitude))
+
+LIMIT = 100 # limit of number of venues returned by Foursquare API
+radius = 500 # define radius
+
+url = 'https://api.foursquare.com/v2/venues/explore?&client_id={}&client_secret={}&v={}&ll={},{}&radius={}&limit={}'.format(
+    CLIENT_ID, 
+    CLIENT_SECRET, 
+    VERSION, 
+    neighborhood_latitude, 
+    neighborhood_longitude, 
+    radius, 
+    LIMIT)
+url # display URL
+
+results = requests.get(url).json()
+results
+
+# function that extracts the category of the venue
+def get_category_type(row):
+    try:
+        categories_list = row['categories']
+    except:
+        categories_list = row['venue.categories']
+        
+    if len(categories_list) == 0:
+        return None
+    else:
+        return categories_list[0]['name']
+venues = results['response']['groups'][0]['items']
+    
+nearby_venues = json_normalize(venues) # flatten JSON
+
+# filter columns
+filtered_columns = ['venue.name', 'venue.categories', 'venue.location.lat', 'venue.location.lng']
+nearby_venues =nearby_venues.loc[:, filtered_columns]
+
+# filter the category for each row
+nearby_venues['venue.categories'] = nearby_venues.apply(get_category_type, axis=1)
+
+# clean columns
+nearby_venues.columns = [col.split(".")[-1] for col in nearby_venues.columns]
+
+nearby_venues.head()
+print('{} venues were returned by Foursquare.'.format(nearby_venues.shape[0]))
+
+
+#Let's create a function to repeat the same process to all the neighborhoods in Manhattan
+
+def getNearbyVenues(names, latitudes, longitudes, radius=500):
+    
+    venues_list=[]
+    for name, lat, lng in zip(names, latitudes, longitudes):
+        print(name)
+            
+        # create the API request URL
+        url = 'https://api.foursquare.com/v2/venues/explore?&client_id={}&client_secret={}&v={}&ll={},{}&radius={}&limit={}'.format(
+            CLIENT_ID, 
+            CLIENT_SECRET, 
+            VERSION, 
+            lat, 
+            lng, 
+            radius, 
+            LIMIT)
+            
+        # make the GET request
+        results = requests.get(url).json()["response"]['groups'][0]['items']
+        
+        # return only relevant information for each nearby venue
+        venues_list.append([(
+            name, 
+            lat, 
+            lng, 
+            v['venue']['name'], 
+            v['venue']['location']['lat'], 
+            v['venue']['location']['lng'],  
+            v['venue']['categories'][0]['name']) for v in results])
+
+    nearby_venues = pd.DataFrame([item for venue_list in venues_list for item in venue_list])
+    nearby_venues.columns = ['Neighbourhood', 
+                  'Neighbourhood Latitude', 
+                  'Neighbourhood Longitude', 
+                  'Venue', 
+                  'Venue Latitude', 
+                  'Venue Longitude', 
+                  'Venue Category']
+    
+    return(nearby_venues)
+
+#Now write the code to run the above function on each neighborhood and create a new dataframe 
+york_venues = getNearbyVenues(names=tor_data['Neighbourhood'],
+                                   latitudes=tor_data['Latitude'],
+                                   longitudes=tor_data['Longitude']
+                                  )
+print(york_venues.shape)
+york_venues.head()
+
+#york_venues.groupby('Neighbourhood').count()
+print('There are {} uniques categories.'.format(len(york_venues['Venue Category'].unique())))
+
+# one hot encoding
+york_onehot = pd.get_dummies(york_venues[['Venue Category']], prefix="", prefix_sep="")
+
+# add neighborhood column back to dataframe
+york_onehot['Neighbourhood'] = york_venues['Neighbourhood'] 
+
+# move neighborhood column to the first column
+fixed_columns = [york_onehot.columns[-1]] + list(york_onehot.columns[:-1])
+york_onehot = york_onehot[fixed_columns]
+
+york_onehot.head()
+#york_onehot.shape
+
+#york_grouped = york_onehot.groupby('Neighbourhood').mean().reset_index()
+#york_grouped.head()
+=======================================================================================
+
+
